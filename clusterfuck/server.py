@@ -20,6 +20,8 @@ PEER_PATHS = {'/api/node', '/api/prepare', '/api/commit', '/api/cancel', '/api/r
 
 
 def make_handler(node):
+    # Browsers scope cookies to hosts, not ports: two local nodes need distinct names.
+    cookie_name = 'cf_session_' + node.credentials['node_id'][:12]
     class Handler(BaseHTTPRequestHandler):
         server_version = 'ClusterFuck/1.0'
 
@@ -52,7 +54,7 @@ def make_handler(node):
                 cookie.load(self.headers.get('Cookie', ''))
             except Exception:
                 return None
-            key = cookie.get('cf_session')
+            key = cookie.get(cookie_name)
             with node.lock:
                 result = node.sessions.get(key.value if key else '')
                 return result if result and result['expires'] > time.time() else None
@@ -130,14 +132,14 @@ def make_handler(node):
                         csrf = secrets.token_urlsafe(24)
                         node.sessions[key] = dict(expires=time.time() + 43200, csrf=csrf)
                     secure = '; Secure' if isinstance(self.connection, ssl.SSLSocket) else ''
-                    return self.respond({'csrf': csrf}, cookie=f'cf_session={key}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200{secure}')
+                    return self.respond({'csrf': csrf}, cookie=f'{cookie_name}={key}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200{secure}')
                 if not self.authorized(path, mutation=True):
                     return self.respond({'error': 'Anmeldung/CSRF oder Peer-Authentifizierung ungültig'}, 401)
                 if path == '/api/logout':
                     session = self.session()
                     with node.lock:
                         node.sessions = {k: v for k, v in node.sessions.items() if v is not session}
-                    return self.respond({'ok': True}, cookie='cf_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0')
+                    return self.respond({'ok': True}, cookie=f'{cookie_name}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0')
                 if path == '/api/config':
                     return self.respond(node.update_config(data))
                 if path == '/api/team':

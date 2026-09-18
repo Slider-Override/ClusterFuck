@@ -253,6 +253,38 @@ class ApiTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             peer_request(peer, '/api/node', insecure=True)
 
+    def test_two_nodes_on_same_host_keep_both_browser_sessions(self):
+        directory = TestDirectory()
+        other = Node(directory.name, start_workers=False)
+        server = ThreadingHTTPServer(('127.0.0.1', 0), make_handler(other))
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            _, cookie_a, _ = self.request('/api/login', {'password': self.node.credentials['password']})
+            connection = http.client.HTTPConnection('127.0.0.1', server.server_port)
+            connection.request('POST', '/api/login', json.dumps({'password': other.credentials['password']}), {'Content-Type': 'application/json'})
+            response = connection.getresponse()
+            self.assertEqual(response.status, 200)
+            cookie_b = response.getheader('Set-Cookie')
+            response.read()
+            connection.close()
+            self.assertNotEqual(cookie_a.split('=')[0], cookie_b.split('=')[0])
+            # A browser sends both host cookies to either port.
+            cookies = cookie_a.split(';')[0] + '; ' + cookie_b.split(';')[0]
+            status, _, node_a = self.request('/api/node', headers={'Cookie': cookies})
+            self.assertEqual(status, 200)
+            self.assertEqual(node_a['id'], self.node.credentials['node_id'])
+            connection = http.client.HTTPConnection('127.0.0.1', server.server_port)
+            connection.request('GET', '/api/node', headers={'Cookie': cookies})
+            response = connection.getresponse()
+            self.assertEqual(response.status, 200)
+            self.assertEqual(json.loads(response.read())['id'], other.credentials['node_id'])
+            connection.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+            other.close()
+            directory.cleanup()
+
 
 if __name__ == '__main__':
     unittest.main()
