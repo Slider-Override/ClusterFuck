@@ -1,3 +1,8 @@
+
+<img width="1539" height="1256" alt="ClusterFuck" src="https://github.com/user-attachments/assets/08a2617e-f407-4edd-b6ae-1b023b688cc0" />
+
+
+
 # ClusterFuck · Version 1
 
 Gleichberechtigte Docker-Nodes mit eigenem WebUI für iperf3-Netzwerktests. Jeder Node kann Tests auf sich selbst und anderen verbundenen Nodes starten. Kein dauerhafter Master und kein zentraler Dienst.
