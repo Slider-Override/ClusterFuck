@@ -321,7 +321,7 @@ class Node:
             resolved.append((node_id, target))
         # Reserve concurrently so slow/unreachable peers do not shift start times.
         start_at = time.time() + 15
-        group_id = secrets.token_hex(10)
+        group_id = secrets.token_hex(10) if len(resolved) > 1 else ''
         receipts = []
         def reserve(item):
             node_id, target = item

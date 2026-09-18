@@ -106,13 +106,24 @@ def main():
         assert all(j['status'] == 'completed' for j in jobs), jobs
         assert seen_live == {0, 1}, 'Both nodes must report live intervals'
         assert abs(jobs[0]['actual_start'] - jobs[1]['actual_start']) < 1
+        wait_for(lambda: not api(first, '/api/node')['server_busy'])
+        single = api(first, '/api/team', {'tasks': [{'node_id': 'remote', 'target_id': 'a'}],
+                                         'options': {'duration': 2, 'protocol': 'udp', 'direction': 'download', 'bitrate': '5M'}})
+        single_id = single['jobs'][0]['id']
+        def single_result():
+            job = next(j for j in api(nodes[1], '/api/node')['jobs'] if j['id'] == single_id)
+            assert job['status'] not in ('failed', 'cancelled'), job
+            return job if job['status'] == 'completed' else None
+        single_job = wait_for(single_result)
+        assert not single_job['group_id']
+        assert any(isinstance(v, dict) and 'jitter_ms' in v for v in single_job['summary'].values()), single_job['summary']
         cfg = api(first, '/api/config')
         cfg['paused_until'] = -1
         api(first, '/api/config', cfg)
         wait_for(lambda: not api(first, '/api/node')['server_running'])
         result = subprocess.run(['docker', 'exec', nodes[1]['name'], 'iperf3', '-c', first['name'], '--connect-timeout', '1000', '-t', '1'], capture_output=True)
         assert result.returncode != 0, 'Pause must also block direct incoming iperf3'
-        print('PASS: real iperf3, pinned HTTPS, bidirectional peer control, live team data, external probe and incoming pause')
+        print('PASS: real TCP team test, remote UDP download single test, pinned HTTPS, live data, external probe and incoming pause')
     except Exception:
         # Application logs never contain secrets. Print diagnostics before cleanup.
         for name in names:

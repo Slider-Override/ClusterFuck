@@ -182,6 +182,13 @@ class NodeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.node.team({'tasks': [{'node_id': 'self', 'target_id': 't'}, {'node_id': 'remote', 'target_id': 't'}], 'options': {}})
 
+    def test_single_run_is_not_labeled_as_team(self):
+        self.node.config['targets'] = [dict(id='t', name='S', host='localhost', port=5201)]
+        result = self.node.team({'tasks': [{'node_id': 'self', 'target_id': 't'}], 'options': {'duration': 2}})
+        self.assertEqual(result['group_id'], '')
+        self.assertEqual(self.node.jobs[0]['group_id'], '')
+        self.assertEqual(self.node.jobs[0]['status'], 'waiting')
+
     def test_real_process_streaming_lifecycle_with_fixture(self):
         script = "import json,time; print(json.dumps({'event':'interval','data':{'sum':{'bits_per_second':123000000}}}),flush=True); time.sleep(.1); print(json.dumps({'event':'end','data':{'sum_sent':{'bits_per_second':123000000}}}),flush=True)"
         import sys
