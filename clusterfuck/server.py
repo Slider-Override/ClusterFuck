@@ -32,6 +32,14 @@ def make_handler(node):
         def log_message(self, *args):
             pass  # Do not log credentials, request bodies or pairing tokens.
 
+        def handle(self):
+            try:
+                super().handle()
+            except ssl.SSLError as error:
+                if error.reason != 'HTTP_REQUEST':
+                    raise
+                print('HTTP-Anfrage am HTTPS-Port abgelehnt. Bitte https:// verwenden; Proxy/Healthcheck prüfen.', flush=True)
+
         def respond(self, data, status=200, content_type='application/json', cookie=None):
             raw = json.dumps(data).encode() if content_type == 'application/json' else data
             self.send_response(status)
