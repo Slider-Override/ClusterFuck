@@ -3,6 +3,7 @@ import hashlib
 import http.client
 import json
 import secrets
+import socket
 import ssl
 import subprocess
 import sys
@@ -76,6 +77,18 @@ def main():
             wait_for(lambda: api(node, '/api/login', {'password': credential['password']}))
             wait_for(lambda: api(node, '/api/node')['server_running'])
             nodes.append(node)
+        # Plain HTTP must be rejected without a traceback; HTTPS must still work.
+        for node in nodes:
+            with socket.create_connection(('127.0.0.1', node['port']), timeout=5) as connection:
+                connection.sendall(b'GET /healthz HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n')
+                try:
+                    assert connection.recv(1024) == b''
+                except ConnectionResetError:
+                    pass
+            assert api(node, '/healthz')['status'] == 'ok'
+            logs = docker('logs', node['name'])
+            assert 'HTTP-Anfrage am HTTPS-Port abgelehnt' in logs
+            assert 'Traceback' not in logs
         for index, node in enumerate(nodes):
             other = nodes[1 - index]
             cfg = api(node, '/api/config')
