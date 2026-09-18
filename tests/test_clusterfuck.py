@@ -12,7 +12,7 @@ import uuid
 import shutil
 from pathlib import Path
 from http.server import ThreadingHTTPServer
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
 from clusterfuck.core import blocked, command, ensure_window, initial_config, validate_config
@@ -105,6 +105,16 @@ class ValidationTests(unittest.TestCase):
             validate_config(cfg, initial_config())
         self.assertEqual(validate_config(cfg, initial_config(), True)['peers'][0]['url'], 'http://node-b:8080')
 
+    def test_wrong_tls_pin_never_transmits_token(self):
+        connection = MagicMock()
+        connection.sock.getpeercert.return_value = b'untrusted-certificate'
+        peer = dict(url='https://example.org:8443', token='secret-only-in-this-fixture', fingerprint='a' * 64)
+        with patch('clusterfuck.runtime.http.client.HTTPSConnection', return_value=connection):
+            with self.assertRaisesRegex(ValueError, 'fingerabdruck'):
+                peer_request(peer, '/api/node')
+        connection.request.assert_not_called()
+        connection.close.assert_called_once()
+
 
 class NodeTests(unittest.TestCase):
     def setUp(self):
@@ -145,6 +155,14 @@ class NodeTests(unittest.TestCase):
         self.node.record_event(job, {'event': 'end', 'data': {'sum': {'bits_per_second': 1e8, 'jitter_ms': .5, 'lost_percent': 2}, 'streams': ['ignored']}})
         self.assertEqual(job['summary']['sum']['lost_percent'], 2)
         self.assertNotIn('streams', job['summary'])
+
+    def test_live_snapshot_is_bounded_and_preserves_latest_value(self):
+        job = self.node.find_job(self.prepared()['id'])
+        job['intervals'] = [{'sums': {'sum': {'bits_per_second': i}}} for i in range(3600)]
+        snapshot = self.node.snapshot()['jobs'][0]['intervals']
+        self.assertEqual(len(snapshot), 120)
+        self.assertEqual(snapshot[-1]['sums']['sum']['bits_per_second'], 3599)
+        self.assertEqual(len(job['intervals']), 3600)
 
     def test_team_failure_cancels_successful_reservation(self):
         self.node.config['targets'] = [dict(id='t1', name='S1', host='localhost', port=5201), dict(id='t2', name='S2', host='localhost', port=5202)]

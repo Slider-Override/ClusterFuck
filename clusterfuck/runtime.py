@@ -76,6 +76,7 @@ class Node:
         self.server_process = None
         self.server_error = ''
         self.server_busy = False
+        self.server_started_at = 0
         self.stop_event = threading.Event()
         self.fingerprint = ''
         self.iperf_port = int(os.getenv('IPERF_PORT', '5201'))
@@ -126,6 +127,11 @@ class Node:
                           server_busy=self.server_busy,
                           server_error=self.server_error, iperf_port=self.iperf_port,
                           jobs=copy.deepcopy(self.jobs[-30:]), version='1.0.0')
+            # Bound polling traffic even for hour-long tests; retain the latest point.
+            for job in result['jobs']:
+                points = job['intervals']
+                if len(points) > 120:
+                    job['intervals'] = [points[round(i * (len(points) - 1) / 119)] for i in range(120)]
         return result
 
     def peer(self, peer_id):
@@ -266,8 +272,12 @@ class Node:
 
     def record_event(self, job, event):
         with self.lock:
+            if not isinstance(event, dict):
+                return
             kind = event.get('event')
             data = event.get('data', {})
+            if kind != 'error' and not isinstance(data, dict):
+                return
             if kind == 'interval':
                 # Keep sender/receiver and bidirectional sums separate.
                 sums = {k: v for k, v in data.items() if k.startswith('sum') and isinstance(v, dict)}
@@ -415,13 +425,16 @@ class Node:
                         self.cancel(job['id'], reason)
                 wanted = self.config['server_enabled'] and not reason
                 running = self.server_process and self.server_process.poll() is None
+                if running and self.server_busy and time.time() - self.server_started_at > 3630:
+                    self.server_process.terminate()
+                    self.server_error = 'Eingehender Test hat das Zeitlimit überschritten'
                 if running and not wanted:
                     self.server_process.terminate()
                 elif wanted and not running and time.time() >= next_retry:
                     try:
                         self.server_process = subprocess.Popen([
                             os.getenv('IPERF_BINARY', 'iperf3'), '-s', '-p', str(self.iperf_port),
-                            '--server-max-duration', '3630', '--json-stream', '--forceflush'],
+                            '--json-stream', '--forceflush'],
                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, encoding='utf-8', errors='replace')
                         self.server_busy = False
                         threading.Thread(target=self.read_server, args=(self.server_process,), daemon=True).start()
@@ -439,10 +452,13 @@ class Node:
                     event = json.loads(line)
                 except json.JSONDecodeError:
                     continue
+                if not isinstance(event, dict):
+                    continue
                 with self.lock:
                     if self.server_process is process:
                         if event.get('event') == 'start':
                             self.server_busy = True
+                            self.server_started_at = time.time()
                         elif event.get('event') in ('end', 'error'):
                             self.server_busy = False
         finally:

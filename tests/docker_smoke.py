@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
 def docker(*args):
-    return subprocess.check_output(['docker', *args], text=True).strip()
+    return subprocess.check_output(['docker', *args], text=True, stderr=subprocess.PIPE).strip()
 
 
 def api(node, path, payload=None):
@@ -113,6 +113,12 @@ def main():
         result = subprocess.run(['docker', 'exec', nodes[1]['name'], 'iperf3', '-c', first['name'], '--connect-timeout', '1000', '-t', '1'], capture_output=True)
         assert result.returncode != 0, 'Pause must also block direct incoming iperf3'
         print('PASS: real iperf3, pinned HTTPS, bidirectional peer control, live team data, external probe and incoming pause')
+    except Exception:
+        # Application logs never contain secrets. Print diagnostics before cleanup.
+        for name in names:
+            subprocess.run(['docker', 'logs', '--tail', '30', name])
+            subprocess.run(['docker', 'exec', name, 'iperf3', '--version'])
+        raise
     finally:
         for name in names:
             subprocess.run(['docker', 'rm', '-f', '-v', name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
