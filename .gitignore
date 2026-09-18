@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+data/
+test-data/
+*.key
+*.crt
+*credentials*.json
+__pycache__/
+*.pyc
+.venv/
+artifacts/

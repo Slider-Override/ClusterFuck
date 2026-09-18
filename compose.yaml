@@ -1,0 +1,27 @@
+services:
+  node:
+    image: ${CLUSTERFUCK_IMAGE:-ghcr.io/slider-override/clusterfuck:edge}
+    build: .
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_NAME: ${NODE_NAME:-ClusterFuck}
+      WEB_PORT: ${WEB_INTERNAL_PORT:-8443}
+      IPERF_PORT: ${IPERF_INTERNAL_PORT:-5201}
+      TLS_ENABLED: ${TLS_ENABLED:-true}
+      ALLOW_INSECURE_PEERS: ${ALLOW_INSECURE_PEERS:-false}
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:${WEB_HOST_PORT:-8443}:${WEB_INTERNAL_PORT:-8443}/tcp"
+      - "${BIND_ADDRESS:-0.0.0.0}:${IPERF_HOST_PORT:-5201}:${IPERF_INTERNAL_PORT:-5201}/tcp"
+      - "${BIND_ADDRESS:-0.0.0.0}:${IPERF_HOST_PORT:-5201}:${IPERF_INTERNAL_PORT:-5201}/udp"
+    volumes:
+      - node-data:/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+volumes:
+  node-data:

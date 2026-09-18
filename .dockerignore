@@ -1,0 +1,12 @@
+.git
+.env
+.env.*
+data
+test-data
+artifacts
+tests
+__pycache__
+**/__pycache__
+*.key
+*.crt
+*credentials*.json
